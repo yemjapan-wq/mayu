@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>眉毛診断 | EYEBROW ORACLE</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Serif+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: #080510;
+  font-family: 'Noto Serif JP', serif;
+  color: #f0e6d3;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(180,130,60,0.07) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(100,50,120,0.08) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* ── Layout ── */
+.wrap {
+  width: 100%;
+  max-width: 460px;
+  position: relative;
+  z-index: 1;
+}
+.card {
+  background: rgba(12, 7, 18, 0.9);
+  border: 1px solid rgba(180,130,60,0.22);
+  padding: 36px 28px;
+  position: relative;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 0 80px rgba(0,0,0,0.9), inset 0 0 40px rgba(180,130,60,0.025);
+}
+.card::before, .card::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-color: rgba(180,130,60,0.55);
+  border-style: solid;
+}
+.card::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+.card::after  { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ── Typography ── */
+.orn  { text-align: center; font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 5px; color: rgba(180,130,60,0.5); margin-bottom: 10px; }
+.ttl  { font-family: 'Cinzel', serif; font-size: 11px; font-weight: 600; letter-spacing: 4px; color: rgba(180,130,60,0.85); text-align: center; margin-bottom: 6px; }
+.jp   { font-size: 24px; font-weight: 700; letter-spacing: 5px; text-align: center; margin-bottom: 6px; line-height: 1.3; }
+.sub  { font-size: 11px; letter-spacing: 3px; color: rgba(180,130,60,0.55); text-align: center; margin-bottom: 28px; }
+.body { font-size: 13px; line-height: 2; color: rgba(240,230,211,0.65); text-align: center; margin-bottom: 28px; }
+.div  { height: 1px; background: linear-gradient(90deg, transparent, rgba(180,130,60,0.35), transparent); margin: 22px 0; }
+
+/* ── Buttons ── */
+.btn {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(135deg, rgba(180,130,60,0.12), rgba(180,130,60,0.04));
+  border: 1px solid rgba(180,130,60,0.45);
+  color: rgba(180,130,60,0.95);
+  font-family: 'Noto Serif JP', serif;
+  font-size: 13px;
+  letter-spacing: 4px;
+  cursor: pointer;
+  transition: all 0.3s;
+  margin-bottom: 10px;
+  display: block;
+  text-align: center;
+}
+.btn:hover { background: linear-gradient(135deg, rgba(180,130,60,0.22), rgba(180,130,60,0.08)); border-color: rgba(180,130,60,0.8); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-ghost {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  border: none;
+  color: rgba(240,230,211,0.3);
+  font-family: 'Noto Serif JP', serif;
+  font-size: 12px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: color 0.3s;
+  margin-bottom: 0;
+}
+.btn-ghost:hover { color: rgba(240,230,211,0.65); }
+
+/* ── Upload ── */
+.upload-area {
+  border: 1px dashed rgba(180,130,60,0.32);
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  margin-bottom: 20px;
+  position: relative;
+}
+.upload-area:hover { border-color: rgba(180,130,60,0.7); background: rgba(180,130,60,0.03); }
+.upload-area input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.up-icon { font-size: 32px; display: block; margin-bottom: 10px; }
+.up-txt  { font-size: 12px; color: rgba(240,230,211,0.6); line-height: 1.9; letter-spacing: 1px; }
+
+.preview-wrap { position: relative; margin-bottom: 20px; }
+#preview {
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  display: block;
+  border: 1px solid rgba(180,130,60,0.2);
+}
+#overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ── Loading ── */
+.loading-c { text-align: center; padding: 20px 0; }
+.ring-wrap { width: 60px; height: 60px; margin: 0 auto 24px; position: relative; }
+.ring {
+  width: 60px; height: 60px;
+  border: 1px solid rgba(180,130,60,0.15);
+  border-top-color: rgba(180,130,60,0.8);
+  border-radius: 50%;
+  animation: spin 1.4s linear infinite;
+}
+.ring-inner { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 20px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.load-txt { font-size: 12px; letter-spacing: 3px; color: rgba(180,130,60,0.7); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+.load-sub { font-size: 10px; letter-spacing: 2px; color: rgba(240,230,211,0.25); margin-top: 10px; }
+
+/* ── Error ── */
+.err-box {
+  background: rgba(180,40,40,0.1);
+  border: 1px solid rgba(180,40,40,0.3);
+  padding: 12px 16px;
+  font-size: 12px;
+  color: rgba(240,140,140,0.9);
+  text-align: center;
+  margin-bottom: 16px;
+  line-height: 1.8;
+  letter-spacing: 0.5px;
+}
+
+/* ── Results ── */
+.res-type { text-align: center; font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 4px; color: rgba(180,130,60,0.6); margin-bottom: 6px; }
+.res-name { text-align: center; font-size: 22px; font-weight: 700; letter-spacing: 4px; color: #f0e6d3; margin-bottom: 4px; }
+.res-name-en { text-align: center; font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 6px; color: rgba(180,130,60,0.5); margin-bottom: 20px; }
+
+.res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.sec {
+  background: rgba(180,130,60,0.035);
+  border: 1px solid rgba(180,130,60,0.16);
+  padding: 14px 12px;
+  position: relative;
+}
+.sec.full { grid-column: 1 / -1; }
+.sec-icon { font-size: 16px; display: block; margin-bottom: 5px; }
+.sec-lbl { font-family: 'Cinzel', serif; font-size: 9px; letter-spacing: 3px; color: rgba(180,130,60,0.65); margin-bottom: 7px; display: block; }
+.sec-txt { font-size: 11.5px; line-height: 1.95; color: rgba(240,230,211,0.72); }
+.sec-adv { font-size: 11px; line-height: 1.8; color: rgba(180,130,60,0.72); margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(180,130,60,0.12); }
+
+.kw-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.kw {
+  padding: 2px 9px;
+  border: 1px solid rgba(180,130,60,0.38);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: rgba(180,130,60,0.9);
+}
+.ft-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
+.ft-tag { padding: 2px 7px; background: rgba(180,130,60,0.1); font-size: 10px; color: rgba(240,230,211,0.8); }
+.badge { display: inline-block; padding: 3px 10px; border: 1px solid rgba(180,130,60,0.45); font-size: 10px; letter-spacing: 2px; color: rgba(180,130,60,0.9); margin-bottom: 7px; }
+
+.msg-box {
+  background: linear-gradient(135deg, rgba(180,130,60,0.07), rgba(100,50,120,0.04));
+  border: 1px solid rgba(180,130,60,0.28);
+  padding: 18px;
+  text-align: center;
+  margin-bottom: 0;
+}
+.msg-icon { font-size: 18px; display: block; margin-bottom: 8px; }
+.msg-txt { font-size: 12.5px; line-height: 2.1; color: rgba(240,230,211,0.82); font-style: italic; }
+
+/* ── Meter bars ── */
+.meters { margin-bottom: 16px; }
+.meter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.meter-lbl { font-size: 10px; letter-spacing: 1px; color: rgba(180,130,60,0.6); width: 50px; flex-shrink: 0; }
+.meter-bar { flex: 1; height: 3px; background: rgba(180,130,60,0.12); position: relative; }
+.meter-fill { height: 100%; background: linear-gradient(90deg, rgba(180,130,60,0.5), rgba(180,130,60,0.9)); transition: width 0.8s ease; }
+.meter-val { font-size: 10px; color: rgba(240,230,211,0.4); width: 28px; text-align: right; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="card">
+
+  <!-- ■ HOME ■ -->
+  <div class="screen active" id="scr-home">
+    <div class="orn">✦ ✦ ✦</div>
+    <div class="ttl">EYEBROW ORACLE</div>
+    <div class="jp">眉 毛 診 断</div>
+    <div class="sub">美容 · 性格 · 運勢 · 面相</div>
+    <div class="div"></div>
+    <div class="body">
+      眉は意志の線。形に宿る性格・運気・美しさを<br>
+      顔認識AIがブラウザ内で完全分析します。<br>
+      <span style="font-size:11px;color:rgba(180,130,60,0.5)">写真はサーバーに送信されません</span>
+    </div>
+    <button class="btn" onclick="showScreen('scr-upload')">✦ 診断をはじめる ✦</button>
+  </div>
+
+  <!-- ■ UPLOAD ■ -->
+  <div class="screen" id="scr-upload">
+    <div class="orn">📷 UPLOAD</div>
+    <div class="jp" style="font-size:20px;margin-bottom:20px">写真をアップロード</div>
+    <div id="err-box" class="err-box" style="display:none"></div>
+
+    <div id="upload-area" class="upload-area">
+      <span class="up-icon">👁️</span>
+      <div class="up-txt">
+        顔・眉毛が正面を向いた写真を選択<br>
+        <span style="color:rgba(180,130,60,0.5);font-size:11px">明るい場所・正面顔が精度向上</span>
+      </div>
+      <input type="file" accept="image/*" id="file-input" onchange="handleFile(event)">
+    </div>
+
+    <div id="preview-wrap" class="preview-wrap" style="display:none">
+      <img id="preview" alt="preview">
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <button class="btn" id="btn-analyze" style="display:none" onclick="startAnalysis()">
+      ✦ 眉を読み解く ✦
+    </button>
+    <button class="btn-ghost" onclick="resetUpload()">写真を変更する</button>
+    <button class="btn-ghost" onclick="showScreen('scr-home')">← 戻る</button>
+  </div>
+
+  <!-- ■ LOADING ■ -->
+  <div class="screen" id="scr-loading">
+    <div class="loading-c">
+      <div class="ring-wrap">
+        <div class="ring"></div>
+        <div class="ring-inner">👁️</div>
+      </div>
+      <div class="orn" style="margin-bottom:6px">READING YOUR BROWS</div>
+      <div class="load-txt" id="load-msg">眉を読み解いています...</div>
+      <div class="load-sub">美容 · 性格 · 運勢 · 面相</div>
+    </div>
+  </div>
+
+  <!-- ■ RESULT ■ -->
+  <div class="screen" id="scr-result">
+    <div class="res-type">YOUR EYEBROW TYPE</div>
+    <div class="res-name" id="r-name">—</div>
+    <div class="res-name-en" id="r-name-en">—</div>
+
+    <!-- Meters -->
+    <div class="meters">
+      <div class="meter-row">
+        <span class="meter-lbl">アーチ</span>
+        <div class="meter-bar"><div class="meter-fill" id="m-arch" style="width:0%"></div></div>
+        <span class="meter-val" id="mv-arch"></span>
+      </div>
+      <div class="meter-row">
+        <span class="meter-lbl">眉の太さ</span>
+        <div class="meter-bar"><div class="meter-fill" id="m-thick" style="width:0%"></div></div>
+        <span class="meter-val" id="mv-thick"></span>
+      </div>
+      <div class="meter-row">
+        <span class="meter-lbl">角度</span>
+        <div class="meter-bar"><div class="meter-fill" id="m-angle" style="width:0%"></div></div>
+        <span class="meter-val" id="mv-angle"></span>
+      </div>
+      <div class="meter-row">
+        <span class="meter-lbl">眉間</span>
+        <div class="meter-bar"><div class="meter-fill" id="m-gap" style="width:0%"></div></div>
+        <span class="meter-val" id="mv-gap"></span>
+      </div>
+    </div>
+
+    <div class="div" style="margin-top:0"></div>
+    <div class="res-grid">
+      <div class="sec full">
+        <span class="sec-icon">💄</span>
+        <span class="sec-lbl">BEAUTY · 美容診断</span>
+        <div class="sec-txt" id="r-beauty-a">—</div>
+        <div class="sec-adv" id="r-beauty-adv">—</div>
+      </div>
+      <div class="sec full">
+        <span class="sec-icon">🔮</span>
+        <span class="sec-lbl">PERSONALITY · 性格</span>
+        <div class="kw-row" id="r-kw"></div>
+        <div class="sec-txt" id="r-pers">—</div>
+      </div>
+      <div class="sec">
+        <span class="sec-icon">⭐</span>
+        <span class="sec-lbl">FORTUNE · 運勢</span>
+        <div class="ft-tags" id="r-ft-tags"></div>
+        <div class="sec-txt" id="r-fort">—</div>
+        <div class="sec-adv" id="r-fort-adv">—</div>
+      </div>
+      <div class="sec">
+        <span class="sec-icon">☯️</span>
+        <span class="sec-lbl">MENSOU · 面相</span>
+        <div class="badge" id="r-path">—</div>
+        <div class="sec-txt" id="r-men">—</div>
+      </div>
+    </div>
+    <div class="msg-box" style="margin-top:8px">
+      <span class="msg-icon">✨</span>
+      <div class="msg-txt" id="r-msg">—</div>
+    </div>
+    <div class="div"></div>
+    <button class="btn" onclick="resetAll()">もう一度診断する</button>
+  </div>
+
+</div><!-- /card -->
+</div><!-- /wrap -->
+
+<script>
+// ──────────────────────────────────────────
+// SCREEN MANAGEMENT
+// ──────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showError(msg) {
+  const b = document.getElementById('err-box');
+  b.textContent = msg;
+  b.style.display = 'block';
+}
+function hideError() {
+  document.getElementById('err-box').style.display = 'none';
+}
+
+// ──────────────────────────────────────────
+// MEDIAPIPE FACE MESH
+// ──────────────────────────────────────────
+let faceMesh = null;
+let meshReady = false;
+
+function initFaceMesh() {
+  return new Promise((resolve, reject) => {
+    try {
+      faceMesh = new FaceMesh({
+        locateFile: (file) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+      });
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      faceMesh.onResults(() => {}); // dummy to trigger init
+      faceMesh.initialize().then(() => {
+        meshReady = true;
+        resolve();
+      }).catch(reject);
+    } catch (e) { reject(e); }
+  });
+}
+
+function detectFace(imgEl) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('タイムアウト')), 15000);
+    faceMesh.onResults((results) => {
+      clearTimeout(timeout);
+      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        resolve(results.multiFaceLandmarks[0]);
+      } else {
+        reject(new Error('顔が検出できませんでした。正面顔・明るい写真をお試しください。'));
+      }
+    });
+    faceMesh.send({ image: imgEl }).catch(reject);
+  });
+}
+
+// ──────────────────────────────────────────
+// FILE HANDLING
+// ──────────────────────────────────────────
+let currentImg = null;
+
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  hideError();
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      currentImg = img;
+      document.getElementById('preview').src = ev.target.result;
+      document.getElementById('preview-wrap').style.display = 'block';
+      document.getElementById('upload-area').style.display = 'none';
+      document.getElementById('btn-analyze').style.display = 'block';
+      // clear overlay
+      const canvas = document.getElementById('overlay');
+      canvas.width = 0; canvas.height = 0;
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function resetUpload() {
+  currentImg = null;
+  document.getElementById('preview-wrap').style.display = 'none';
+  document.getElementById('upload-area').style.display = 'block';
+  document.getElementById('btn-analyze').style.display = 'none';
+  document.getElementById('file-input').value = '';
+  hideError();
+}
+
+function resetAll() {
+  resetUpload();
+  showScreen('scr-home');
+}
+
+// ──────────────────────────────────────────
+// ANALYSIS ENTRY POINT
+// ──────────────────────────────────────────
+async function startAnalysis() {
+  if (!currentImg) return;
+  hideError();
+  showScreen('scr-loading');
+  setLoadMsg('顔認識モデルを準備中...');
+
+  try {
+    if (!meshReady) {
+      await initFaceMesh();
+    }
+    setLoadMsg('眉のランドマークを検出中...');
+    const landmarks = await detectFace(currentImg);
+
+    setLoadMsg('眉を計測・診断中...');
+    const metrics = measureBrows(landmarks);
+    drawLandmarks(landmarks);
+
+    const type = classifyType(metrics);
+    const data = DIAGNOSIS[type];
+    renderResult(data, metrics);
+    showScreen('scr-result');
+
+  } catch (err) {
+    showScreen('scr-upload');
+    showError(err.message || '診断中にエラーが発生しました。');
+  }
+}
+
+function setLoadMsg(msg) {
+  document.getElementById('load-msg').textContent = msg;
+}
+
+// ──────────────────────────────────────────
+// LANDMARK DRAWING (visual feedback)
+// ──────────────────────────────────────────
+// MediaPipe FaceMesh eyebrow landmark indices
+const L_UPPER = [70, 63, 105, 66, 107];
+const L_LOWER = [46, 53, 52, 65, 55];
+const R_UPPER = [300, 293, 334, 296, 336];
+const R_LOWER = [276, 283, 282, 295, 285];
+const ALL_BROW = [...L_UPPER, ...L_LOWER, ...R_UPPER, ...R_LOWER];
+
+function drawLandmarks(landmarks) {
+  const img = document.getElementById('preview');
+  const canvas = document.getElementById('overlay');
+  const w = img.clientWidth || img.naturalWidth;
+  const h = img.clientHeight || img.naturalHeight;
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  ALL_BROW.forEach(idx => {
+    const lm = landmarks[idx];
+    ctx.beginPath();
+    ctx.arc(lm.x * w, lm.y * h, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(180,210,255,0.85)';
+    ctx.fill();
+  });
+
+  // Connect upper lines
+  [L_UPPER, R_UPPER].forEach(group => {
+    ctx.beginPath();
+    group.forEach((idx, i) => {
+      const lm = landmarks[idx];
+      if (i === 0) ctx.moveTo(lm.x * w, lm.y * h);
+      else ctx.lineTo(lm.x * w, lm.y * h);
+    });
+    ctx.strokeStyle = 'rgba(180,130,60,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+}
+
+// ──────────────────────────────────────────
+// MEASUREMENT
+// ──────────────────────────────────────────
+function pt(landmarks, idx) { return { x: landmarks[idx].x, y: landmarks[idx].y }; }
+
+function browMetrics(landmarks, upper, lower, innerIdx, outerIdx, peakIdx) {
+  const inner = pt(landmarks, innerIdx);
+  const outer = pt(landmarks, outerIdx);
+  const peak  = pt(landmarks, peakIdx);
+
+  // Arch: how much peak deviates above the inner→outer baseline
+  const t = (peak.x - inner.x) / ((outer.x - inner.x) || 0.001);
+  const baselineY = inner.y + t * (outer.y - inner.y);
+  const arch = baselineY - peak.y; // positive = curves upward (y decreases upward)
+
+  // Angle (radians): negative = tail goes up, positive = tail goes down
+  const dx = Math.abs(outer.x - inner.x) || 0.001;
+  const dy = outer.y - inner.y;
+  const angle = Math.atan2(dy, dx); // For left brow, outer is LEFT of inner, so flip x
+
+  // Length
+  const len = Math.sqrt((outer.x-inner.x)**2 + (outer.y-inner.y)**2);
+
+  // Thickness: average distance between paired upper/lower points
+  let thick = 0;
+  const n = Math.min(upper.length, lower.length);
+  for (let i = 0; i < n; i++) {
+    const u = pt(landmarks, upper[i]);
+    const lo = pt(landmarks, lower[i]);
+    thick += Math.sqrt((u.x-lo.x)**2 + (u.y-lo.y)**2);
+  }
+  thick /= n;
+
+  return { arch, angle, len, thick };
+}
+
+function measureBrows(landmarks) {
+  // Left brow: inner=55, outer=107(more outer), peak=105
+  // Right brow: inner=285, outer=336(more outer), peak=334
+  const L = browMetrics(landmarks, L_UPPER, L_LOWER, 55, 107, 105);
+  const R = browMetrics(landmarks, R_UPPER, R_LOWER, 285, 336, 334);
+
+  // For left brow, the outer is to the LEFT, so dx in angle calc needs adjustment
+  // We already use abs(dx) above, so angle polarity: negative=ascending, positive=descending
+  // But left brow: inner is closer to nose (higher x), outer is toward temple (lower x)
+  // atan2(dy, |dx|): if tail goes up (outer.y < inner.y) → dy < 0 → angle < 0 ✓
+
+  // Right brow: inner is closer to nose (lower x), outer toward temple (higher x)
+  // same formula works since we take abs(dx)
+
+  const arch  = (L.arch  + R.arch)  / 2;
+  const angle = (L.angle + R.angle) / 2;
+  const thick = (L.thick + R.thick) / 2;
+  const len   = (L.len   + R.len)   / 2;
+
+  // Gap between inner brow ends
+  const li = pt(landmarks, 55);
+  const ri = pt(landmarks, 285);
+  const gap = Math.abs(ri.x - li.x);
+
+  // Face width (cheekbones ~234, ~454)
+  const lc = pt(landmarks, 234);
+  const rc = pt(landmarks, 454);
+  const faceW = Math.abs(rc.x - lc.x) || 0.3;
+
+  // Normalize
+  return {
+    archN:  arch  / faceW,
+    thickN: thick / faceW,
+    angleD: angle * (180 / Math.PI),  // degrees, negative=ascending
+    gapN:   gap   / faceW,
+    lenN:   len   / faceW,
+    raw: { arch, thick, angle, gap, faceW }
+  };
+}
+
+// ──────────────────────────────────────────
+// CLASSIFICATION
+// ──────────────────────────────────────────
+function classifyType(m) {
+  const s = { queen:0, will:0, intellect:0, passion:0, compassion:0, rising:0, harmony:0 };
+  const { archN, thickN, angleD, gapN } = m;
+
+  // Arch
+  if      (archN > 0.025) { s.queen+=3; s.passion+=3; }
+  else if (archN > 0.013) { s.queen+=1; s.passion+=2; s.harmony+=1; }
+  else                    { s.will+=2;  s.intellect+=2; }
+
+  // Angle (negative = ascending = tail up)
+  if      (angleD < -6)  { s.rising+=3; s.will+=1; }
+  else if (angleD < -2)  { s.rising+=1; s.will+=1; s.intellect+=1; }
+  else if (angleD > 6)   { s.compassion+=3; }
+  else if (angleD > 2)   { s.compassion+=1; s.harmony+=1; }
+  else                   { s.intellect+=2; s.harmony+=1; }
+
+  // Thickness
+  if      (thickN > 0.028) { s.queen+=2; s.will+=2; }
+  else if (thickN > 0.020) { s.harmony+=1; s.intellect+=1; }
+  else                     { s.passion+=1; s.rising+=1; }
+
+  // Gap
+  if      (gapN < 0.10) { s.will+=1; s.passion+=1; }
+  else if (gapN > 0.18) { s.harmony+=1; s.compassion+=1; }
+
+  return Object.entries(s).sort((a,b) => b[1]-a[1])[0][0];
+}
+
+// ──────────────────────────────────────────
+// DIAGNOSIS DATA
+// ──────────────────────────────────────────
+const DIAGNOSIS = {
+  queen: {
+    name: '女王眉', nameEn: 'QUEEN',
+    beauty: {
+      a: '存在感のある太めアーチ眉。眉山がはっきりしており、顔全体に品格と力強さをもたらしています。',
+      adv: '眉山をほんの少しシャープに整えると更に洗練された印象に。パウダーで均一に埋めると完成度UP。'
+    },
+    pers: { kw:['カリスマ','統率力','自信家'], txt:'生まれながらのリーダー気質。目標に向かって迷わず進む行動力と人を惹きつける魅力を持ちます。感情をコントロールしながらも情熱的で、周囲から頼られる存在です。' },
+    fort: { tags:['仕事運','財運','対人運'], txt:'社会的地位や名声を得やすい眉相。30代以降に大きな飛躍が訪れることが多いです。', adv:'眉を清潔に手入れすると運気が安定します。' },
+    men: { path:'開拓者型', txt:'面相学では「威眉」。権力・成功を示す最上の眉相の一つ。自ら道を切り開き、多くの人を導く宿命を持ちます。困難をものともしない精神力と、晩年にかけて財と名声が積み重なる人生を歩みます。' },
+    msg: 'あなたの眉は「勝者の眉」。その力強さは才能ではなく、あなたが刻んできた意志の軌跡です。迷わず、前へ。'
+  },
+  will: {
+    name: '意志眉', nameEn: 'IRON WILL',
+    beauty: {
+      a: 'ほぼ一文字に近い直線的で力強い眉。凛とした強い印象を自然に与えます。',
+      adv: '眉頭は自然なグラデーションに整えると柔らかさが加わります。眉尻のラインをシャープに保つと意志の強さが際立ちます。'
+    },
+    pers: { kw:['負けず嫌い','一途','高い目標'], txt:'一度決めたことは必ずやり遂げる鉄の意志の持ち主。感情に流されず論理と信念で行動します。競争に強く、目標達成への執着心が人並み外れています。' },
+    fort: { tags:['仕事運','勝負運','独立運'], txt:'努力が直接結果に繋がる眉相。諦めない姿勢が最大の武器です。', adv:'頑固さが邪魔することも。協調する場面では柔軟性を意識しましょう。' },
+    men: { path:'剛毅独立型', txt:'面相学では「剛眉」「一の字眉」。武人・志士に多い眉形。己の信念を曲げず、逆境でも折れない精神を持つ人物に表れます。他者への影響力は強く、集団の中で自然と中心的な役割を担います。' },
+    msg: 'その真っ直ぐな眉は、あなたの生き方そのもの。曲げないことが、あなたの最大の強さです。'
+  },
+  intellect: {
+    name: '知性眉', nameEn: 'INTELLECT',
+    beauty: {
+      a: '水平に近いフラットな眉。アーチが控えめで、知的でクールな印象を自然と醸し出しています。',
+      adv: '眉毛の流れに沿って整えるだけで十分。眉マスカラで毛流れを整えると洗練度が増します。'
+    },
+    pers: { kw:['分析力','冷静沈着','観察眼'], txt:'感情よりも理論を重視する知性派。物事を俯瞰して見る力があり、冷静な判断力で周囲から信頼されます。言葉より行動で示すタイプで、深い思索を好みます。' },
+    fort: { tags:['学業運','専門技術運','長期投資運'], txt:'知識と技術が財産になる眉相。専門性を深めるほど運気が上がります。', adv:'感情表現を少し増やすと対人運がアップします。' },
+    men: { path:'深謀遠慮型', txt:'面相学では「平眉」。長寿・知恵・安定を示す吉相。水平な眉相は感情の波が穏やかで一生を通じて安定した人生を歩む傾向があります。表面は穏やかでも内には強固な信念を秘めています。' },
+    msg: 'その静かな眉の奥に、あなたの確かな知性が宿っています。深く考える力こそ、あなたの最高の武器。'
+  },
+  passion: {
+    name: '情熱眉', nameEn: 'PASSION',
+    beauty: {
+      a: 'くっきりとしたアーチが特徴的な眉。眉山が高く、顔に表情と彩りを与えています。',
+      adv: 'アーチのカーブを丁寧に整えると女優感が増します。眉頭はぼかし気味にするとより自然な仕上がりに。'
+    },
+    pers: { kw:['感受性豊か','ロマンチスト','表現力'], txt:'喜怒哀楽が顔に出やすく、感情表現が豊かな人。芸術的なセンスに恵まれており、美しいものへの感受性が鋭いです。直感で動くことで最高のパフォーマンスを発揮します。' },
+    fort: { tags:['芸術運','恋愛運','創造運'], txt:'感性と表現力が才能に繋がる眉相。クリエイティブな分野で頭角を現します。', adv:'気分のムラに注意。感情が安定している時に大きな決断を。' },
+    men: { path:'芸術感性型', txt:'面相学では「弓眉」。芸術・恋愛・感性の豊かさを示す眉相。美しい弧を描く眉は豊かな感受性と芸術的才能の証。人生においてドラマチックな体験を多く持ち、それが創造の源泉となります。' },
+    msg: 'あなたの感受性は才能です。世界があなたの目にどう映るか、その感動を誰かに伝えてください。'
+  },
+  compassion: {
+    name: '慈愛眉', nameEn: 'COMPASSION',
+    beauty: {
+      a: '眉尻が緩やかに下がる柔和な眉。温かみと親しみやすさを顔全体に与えています。',
+      adv: '眉尻を少し上げ気味にメイクするとメリハリが出ます。ただし下がり眉の優しい雰囲気は大きな武器です。'
+    },
+    pers: { kw:['思いやり','受容力','癒し系'], txt:'人の痛みに敏感で、自然と周囲を助けてしまう優しい性格。誰にでも分け隔てなく接することができ、人が集まってきます。自分より他者を優先しがちで、ついつい頑張りすぎることも。' },
+    fort: { tags:['対人運','縁結び運','信頼運'], txt:'人徳が財産になる眉相。困った時に必ず誰かが助けてくれる縁に恵まれます。', adv:'自分自身も大切にすること。NOと言える強さも運気を上げます。' },
+    men: { path:'人徳者型', txt:'面相学では「垂れ眉」または「柳眉」。人望・福徳・縁の深さを示す眉相。柳眉は慈悲深く人々から愛される人物の特徴。施しを惜しまず、その善意は必ず自分に戻ってきます。' },
+    msg: 'あなたの優しさは世界を少しずつ良くしています。その温かさを、まず自分にも向けてあげてください。'
+  },
+  rising: {
+    name: '上昇眉', nameEn: 'AMBITION',
+    beauty: {
+      a: '眉尻がキリッと上がった意志的な眉。顔に躍動感と華やかさをもたらしています。',
+      adv: '眉山をはっきりさせながら眉尻に向けて自然なラインを描くと完璧なバランスに。眉尻が細くなりすぎないよう注意。'
+    },
+    pers: { kw:['野心家','向上心','負けず嫌い'], txt:'現状に満足せず常に上を目指す向上心の持ち主。スピード感があり、チャンスを即座に掴む行動力があります。勝負事に強く、ライバルがいることでさらに燃え上がるタイプです。' },
+    fort: { tags:['出世運','勝負運','競技運'], txt:'上昇志向の眉相は、文字通り運気が上向きになる吉相の一つ。努力に比例して結果が出やすい眉です。', adv:'短気に注意。長期的な視野を持つと人生の質がさらに上がります。' },
+    men: { path:'飛翔向上型', txt:'面相学では「武眉」または「剣眉」。勇気・出世・突破力を示す吉相。上に跳ね上がる眉尻は天への志の高さを示し、障壁を切り開く力があります。特に若い頃の努力が後半の大きな飛躍に繋がります。' },
+    msg: '上を向いたあなたの眉が、行き先を教えてくれています。その野心を、誰にも笑わせないでください。'
+  },
+  harmony: {
+    name: '調和眉', nameEn: 'HARMONY',
+    beauty: {
+      a: 'バランスの取れた自然な眉。特定の個性より全体との調和を大切にする品のある眉です。',
+      adv: '今の眉形を大きく変える必要はありません。産毛を整え眉頭のグラデーションを意識するだけで印象が洗練されます。'
+    },
+    pers: { kw:['協調性','コミュ力','愛されキャラ'], txt:'誰とでも上手く関係を築ける天性のコミュニケーター。空気を読む力が高く、場の雰囲気を和やかにするのが得意です。適応力が高く、どんな環境でも自分らしさを発揮できます。' },
+    fort: { tags:['対人運','結婚運','協力者運'], txt:'縁に恵まれる眉相。良い人間関係が人生の好機を次々と引き寄せます。', adv:'八方美人になりすぎず、自分の核心を大切に。それが最大の魅力になります。' },
+    men: { path:'縁起調和型', txt:'面相学では「穏眉」。福縁・円満・衆人に愛される相。調和の取れた眉相は善い縁が次の善い縁を呼ぶ好循環を生みます。家庭・仕事・友人関係において満足度の高い人生が期待されます。' },
+    msg: 'あなたがいるだけで場が明るくなる。その「存在の力」こそ、あなたの最大の才能です。'
+  }
+};
+
+// ──────────────────────────────────────────
+// RENDER RESULT
+// ──────────────────────────────────────────
+function renderResult(d, m) {
+  document.getElementById('r-name').textContent    = d.name;
+  document.getElementById('r-name-en').textContent = d.nameEn;
+
+  // Meters (normalize to 0-100% for display)
+  const archPct  = Math.min(100, Math.max(5, m.archN  * 3000));
+  const thickPct = Math.min(100, Math.max(5, m.thickN * 2000));
+  const anglePct = Math.min(100, Math.max(5, 50 + m.angleD * 4)); // center=flat, left=down, right=up
+  const gapPct   = Math.min(100, Math.max(5, m.gapN   * 400));
+
+  setMeter('arch',  archPct,  m.archN  > 0.02 ? '高' : m.archN > 0.01 ? '中' : '低');
+  setMeter('thick', thickPct, m.thickN > 0.025 ? '太' : m.thickN > 0.018 ? '中' : '細');
+  setMeter('angle', anglePct, m.angleD < -3 ? '上↑' : m.angleD > 3 ? '下↓' : '水平');
+  setMeter('gap',   gapPct,   m.gapN > 0.16 ? '広' : m.gapN < 0.1 ? '狭' : '中');
+
+  // Beauty
+  document.getElementById('r-beauty-a').textContent   = d.beauty.a;
+  document.getElementById('r-beauty-adv').textContent = d.beauty.adv;
+
+  // Personality
+  const kwEl = document.getElementById('r-kw');
+  kwEl.innerHTML = d.pers.kw.map(k => `<span class="kw">${k}</span>`).join('');
+  document.getElementById('r-pers').textContent = d.pers.txt;
+
+  // Fortune
+  const ftEl = document.getElementById('r-ft-tags');
+  ftEl.innerHTML = d.fort.tags.map(t => `<span class="ft-tag">${t}</span>`).join('');
+  document.getElementById('r-fort').textContent     = d.fort.txt;
+  document.getElementById('r-fort-adv').textContent = d.fort.adv;
+
+  // Mensou
+  document.getElementById('r-path').textContent = d.men.path;
+  document.getElementById('r-men').textContent  = d.men.txt;
+
+  // Message
+  document.getElementById('r-msg').textContent = d.msg;
+}
+
+function setMeter(id, pct, label) {
+  document.getElementById(`m-${id}`).style.width   = pct + '%';
+  document.getElementById(`mv-${id}`).textContent  = label;
+}
+</script>
+</body>
+</html>
