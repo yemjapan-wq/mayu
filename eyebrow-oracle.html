@@ -199,6 +199,17 @@ body::before{
   padding:14px;text-align:center;font-size:12px;line-height:1.9;
   color:rgba(240,230,211,.75);margin-bottom:12px;
 }
+
+/* ── Share buttons ── */
+.share-btn{
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  padding:12px 8px;cursor:pointer;
+  font-family:'Noto Serif JP',serif;font-size:12px;letter-spacing:1px;
+  color:rgba(240,230,211,.85);transition:all .25s;width:100%;
+}
+.share-btn:hover{filter:brightness(1.2);transform:translateY(-1px)}
+.share-btn:active{transform:translateY(0)}
+.share-btn.copied{border-color:rgba(180,130,60,.8)!important;color:rgba(180,130,60,.95)!important}
 </style>
 </head>
 <body>
@@ -208,16 +219,14 @@ body::before{
 <div class="screen active" id="s-home">
   <div class="orn">✦ ✦ ✦</div>
   <div class="ttl">BROW DESTINY</div>
-  <div class="jp">眉で変わる<br>運命診断</div>
-  <div class="sub">顔型 × 現在の眉 × 理想の眉</div>
+  <div class="jp">眉毛診断</div>
+  <div class="sub">あなたの眉が、運命を語る</div>
   <div class="divl"></div>
   <div class="body-t">
-    写真1枚で、あなたの顔型と現在の眉を分析。<br>
-    <strong style="color:rgba(240,210,140,.8)">眉を変えると、運命はどう変わるのか。</strong><br>
-    性格・運勢・面相の変化をすべて見せます。<br>
+    顔写真1枚で診断します。<br>
     <span style="font-size:11px;color:rgba(180,130,60,.45)">写真はサーバーに送信されません</span>
   </div>
-  <button class="btn" onclick="show('s-upload')">✦ 運命を診断する ✦</button>
+  <button class="btn" onclick="show('s-upload')">✦ 診断する ✦</button>
 </div>
 
 <!-- UPLOAD -->
@@ -350,6 +359,30 @@ body::before{
   </div>
 
   <div class="divl"></div>
+
+  <!-- Share buttons -->
+  <div style="margin-bottom:12px">
+    <div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:3px;color:rgba(180,130,60,.6);text-align:center;margin-bottom:10px">SHARE YOUR RESULT</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <button class="share-btn" onclick="shareX()" style="background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2)">
+        <span style="font-size:16px">𝕏</span>
+        <span>Xに投稿</span>
+      </button>
+      <button class="share-btn" onclick="shareLINE()" style="background:rgba(6,199,85,.12);border:1px solid rgba(6,199,85,.35)">
+        <span style="font-size:16px">💬</span>
+        <span>LINEで送る</span>
+      </button>
+      <button class="share-btn" onclick="shareInstagram()" style="background:rgba(225,48,108,.1);border:1px solid rgba(225,48,108,.3)">
+        <span style="font-size:16px">📸</span>
+        <span>Instagramへ</span>
+      </button>
+      <button class="share-btn" id="btn-copy" onclick="copyURL()" style="background:rgba(180,130,60,.1);border:1px solid rgba(180,130,60,.35)">
+        <span style="font-size:16px">🔗</span>
+        <span>URLをコピー</span>
+      </button>
+    </div>
+  </div>
+
   <button class="btn" onclick="resetAll()">もう一度診断する</button>
 </div>
 
@@ -648,6 +681,9 @@ function renderResult(faceType,browType,idealType,face,brows){
 
   // Message
   document.getElementById('r-msg').textContent=buildMsg(faceType,browType,idealType,isSame);
+
+  // Share text
+  setShareText(faceType,browType,idealType);
 }
 
 function fillBrowCard(prefix,data,cls){
@@ -783,6 +819,55 @@ function buildMsg(faceType,browType,idealType,isSame){
     return `${fd.name}のあなたに、その${cur.name}は天性の一致です。変える必要はありません。あなたの眉は、すでに最高の運命を引き寄せています。`;
   }
   return `${fd.name}のあなたが${ide.name}を手に入れる時、${cur.kw[0]}から${ide.kw[0]}へ、あなたの人生は静かに、しかし確実に方向を変えます。眉一本が、運命を書き換える。`;
+}
+
+// ── Share ──
+let _shareText='';
+function setShareText(faceType,browType,idealType){
+  const fd=FACE_DATA[faceType];
+  const cur=BROW_DATA[browType];
+  const ide=BROW_DATA[idealType];
+  _shareText=`【眉毛診断】\n顔型：${fd.name}\n現在の眉：${cur.name}（${cur.kw.join('・')}）\n理想の眉：${ide.name}（${ide.kw.join('・')}）\n\n眉を変えると運命が変わる👁️`;
+}
+
+function shareX(){
+  const url=encodeURIComponent(location.href);
+  const text=encodeURIComponent(_shareText+'\n');
+  window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`,'_blank');
+}
+
+function shareLINE(){
+  const text=encodeURIComponent(_shareText+'\n'+location.href);
+  window.open(`https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(location.href)}&text=${encodeURIComponent(_shareText)}`,'_blank');
+}
+
+function shareInstagram(){
+  // Instagramはアプリ直接連携不可のため、URLコピー+案内
+  copyURL();
+  const btn=document.getElementById('btn-copy');
+  btn.querySelector('span:last-child').textContent='コピー完了！Instagramに貼り付けてね';
+  setTimeout(()=>{btn.querySelector('span:last-child').textContent='URLをコピー'},3000);
+}
+
+function copyURL(){
+  const btn=document.getElementById('btn-copy');
+  navigator.clipboard.writeText(location.href).then(()=>{
+    btn.classList.add('copied');
+    btn.querySelector('span:last-child').textContent='コピーしました！';
+    setTimeout(()=>{
+      btn.classList.remove('copied');
+      btn.querySelector('span:last-child').textContent='URLをコピー';
+    },2500);
+  }).catch(()=>{
+    // フォールバック
+    const ta=document.createElement('textarea');
+    ta.value=location.href;
+    document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.querySelector('span:last-child').textContent='コピーしました！';
+    setTimeout(()=>{btn.querySelector('span:last-child').textContent='URLをコピー'},2500);
+  });
 }
 </script>
 </body>
